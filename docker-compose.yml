@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: analytics_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: analytics_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@enterprise.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: analytics_langfuse
+    restart: always
+    ports:
+      - "3001:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/postgres?schema=langfuse
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=langfuse-enterprise-secret-12345678
+      - SALT=langfuse-salt-value-abcdefgh
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.backend
+    container_name: analytics_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/postgres
+      - LOCAL_DEV=true
+      - MOCK_LLM=false
+      - BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0
+      - ATHENA_DATABASE=analytics_db
+      - ATHENA_S3_OUTPUT=s3://my-athena-query-results-bucket/uncategorized/
+      - AWS_DEFAULT_REGION=us-east-1
+      - REQUIRE_AUTH=false
+      - LANGFUSE_PUBLIC_KEY=pk-lf-12345
+      - LANGFUSE_SECRET_KEY=sk-lf-12345
+      - LANGFUSE_HOST=http://langfuse:3000
+    volumes:
+      # Mount local user AWS credentials directory to give container direct Bedrock permission
+      - C:/Users/manis/.aws:/root/.aws:ro
+      # Mount sample data so DuckDB mock can access local Parquet datasets
+      - ./data:/app/data
+      # Mount backend folder for live-reload / code syncing
+      - ./backend:/app/backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    container_name: analytics_frontend
+    restart: always
+    ports:
+      - "8501:8501"
+    environment:
+      - BACKEND_URL=http://backend:8000
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
