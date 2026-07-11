@@ -1,0 +1,638 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Enterprise Text-to-SQL Analytics Agent Platform — Full AWS Infrastructure Stack.
+  Provisions VPC, RDS (pgvector), S3 Data Lake, Amazon Athena, ECS Fargate Cluster,
+  Cognito User Pool, Secrets Manager, and IAM Roles for the multi-agent backend
+  and frontend services.
+
+# ===========================================================================
+# PARAMETERS
+# ===========================================================================
+Parameters:
+  ProjectName:
+    Type: String
+    Default: sql-agent
+    Description: Prefix applied to all AWS resource names and tags.
+
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Deployment environment identifier.
+
+  AWSRegion:
+    Type: String
+    Default: us-east-1
+    Description: AWS target deployment region.
+
+  DBPassword:
+    Type: String
+    NoEcho: true
+    Default: "DbPassword@12345"
+    Description: >
+      Master password for RDS PostgreSQL. In production this should be
+      supplied via AWS Secrets Manager or SSM Parameter Store — never
+      hardcoded in a template parameter.
+
+# ===========================================================================
+# MAPPINGS
+# ===========================================================================
+Mappings:
+  EnvConfig:
+    dev:
+      DBInstanceClass: db.t4g.micro
+      MultiAZ: false
+      AllocatedStorage: "20"
+    staging:
+      DBInstanceClass: db.t4g.small
+      MultiAZ: false
+      AllocatedStorage: "50"
+    prod:
+      DBInstanceClass: db.t4g.medium
+      MultiAZ: true
+      AllocatedStorage: "100"
+
+# ===========================================================================
+# RESOURCES
+# ===========================================================================
+Resources:
+
+  # =========================================================================
+  # 1. NETWORKING — VPC, Subnets, IGW, Route Tables
+  # =========================================================================
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-vpc-${Environment}"
+        - Key: Environment
+          Value: !Ref Environment
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Sub "${AWSRegion}a"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-public-subnet-a"
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Sub "${AWSRegion}b"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-public-subnet-b"
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.10.0/24
+      AvailabilityZone: !Sub "${AWSRegion}a"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-private-subnet-a"
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Sub "${AWSRegion}b"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-private-subnet-b"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-igw"
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-public-rt"
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  # =========================================================================
+  # 2. SECURITY GROUPS
+  # =========================================================================
+  RDSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow PostgreSQL traffic within VPC
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          CidrIp: 10.0.0.0/16
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-rds-sg"
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP traffic to ECS tasks
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: 10.0.0.0/16
+        - IpProtocol: tcp
+          FromPort: 8501
+          ToPort: 8501
+          CidrIp: 10.0.0.0/16
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-ecs-sg"
+
+  # =========================================================================
+  # 3. S3 BUCKET — Parquet Data Lake + Athena Query Results
+  # =========================================================================
+  DataLakeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-data-lake-${Environment}-${AWS::AccountId}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =========================================================================
+  # 4. AMAZON ATHENA — Workgroup + Database
+  # =========================================================================
+  AthenaWorkgroup:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: !Sub "${ProjectName}-workgroup-${Environment}"
+      Description: Athena workgroup for Text-to-SQL agent queries
+      WorkGroupConfiguration:
+        EnforceWorkGroupConfiguration: true
+        PublishCloudWatchMetricsEnabled: true
+        ResultConfiguration:
+          OutputLocation: !Sub "s3://${DataLakeBucket}/query_results/"
+          EncryptionConfiguration:
+            EncryptionOption: SSE_S3
+
+  # =========================================================================
+  # 5. RDS POSTGRESQL — pgvector for embeddings
+  # =========================================================================
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for pgvector RDS instance
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-db-subnet-group"
+
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+      DBInstanceIdentifier: !Sub "${ProjectName}-pgvector-${Environment}"
+      DBName: postgres
+      Engine: postgres
+      EngineVersion: "16.1"
+      DBInstanceClass: !FindInMap [EnvConfig, !Ref Environment, DBInstanceClass]
+      AllocatedStorage: !FindInMap [EnvConfig, !Ref Environment, AllocatedStorage]
+      MaxAllocatedStorage: 100
+      MasterUsername: postgres
+      MasterUserPassword: !Ref DBPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      MultiAZ: !FindInMap [EnvConfig, !Ref Environment, MultiAZ]
+      StorageEncrypted: true
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 7
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =========================================================================
+  # 6. COGNITO USER POOL — Authentication
+  # =========================================================================
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${ProjectName}-user-pool-${Environment}"
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+      Tags:
+        Environment: !Ref Environment
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "${ProjectName}-app-client-${Environment}"
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+
+  # =========================================================================
+  # 7. SECRETS MANAGER — DB credentials + API keys
+  # =========================================================================
+  DBSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${ProjectName}-db-credentials-${Environment}"
+      Description: PostgreSQL master credentials for pgvector database
+      SecretString: !Sub |
+        {
+          "username": "postgres",
+          "password": "${DBPassword}",
+          "engine": "postgres",
+          "host": "${RDSInstance.Endpoint.Address}",
+          "port": "5432",
+          "dbname": "postgres"
+        }
+
+  # =========================================================================
+  # 8. IAM ROLES — ECS Task Role & Execution Role
+  # =========================================================================
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-ecs-task-role-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub "${ProjectName}-agent-policy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                  - bedrock:ListFoundationModels
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - athena:StartQueryExecution
+                  - athena:GetQueryExecution
+                  - athena:GetQueryResults
+                  - athena:ListWorkGroups
+                  - athena:StopQueryExecution
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                  - s3:DeleteObject
+                Resource:
+                  - !GetAtt DataLakeBucket.Arn
+                  - !Sub "${DataLakeBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource: !Ref DBSecret
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-ecs-exec-role-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ECRAndSecretsAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - secretsmanager:GetSecretValue
+                Resource: "*"
+
+  # =========================================================================
+  # 9. ECR REPOSITORIES — Backend & Frontend container images
+  # =========================================================================
+  BackendECRRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${ProjectName}-backend"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  FrontendECRRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${ProjectName}-frontend"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  # =========================================================================
+  # 10. ECS FARGATE — Cluster + Log Groups
+  # =========================================================================
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${ProjectName}-cluster-${Environment}"
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+
+  BackendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${ProjectName}-backend-${Environment}"
+      RetentionInDays: 30
+
+  FrontendLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/${ProjectName}-frontend-${Environment}"
+      RetentionInDays: 30
+
+  # =========================================================================
+  # 11. ECS TASK DEFINITIONS — Backend & Frontend
+  # =========================================================================
+  BackendTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ProjectName}-backend-${Environment}"
+      Cpu: "512"
+      Memory: "1024"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: backend
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${ProjectName}-backend:latest"
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          Environment:
+            - Name: AWS_REGION
+              Value: !Ref AWSRegion
+            - Name: ENVIRONMENT
+              Value: !Ref Environment
+            - Name: DB_SECRET_ARN
+              Value: !Ref DBSecret
+            - Name: ATHENA_WORKGROUP
+              Value: !Ref AthenaWorkgroup
+            - Name: S3_BUCKET
+              Value: !Ref DataLakeBucket
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref BackendLogGroup
+              awslogs-region: !Ref AWSRegion
+              awslogs-stream-prefix: ecs
+          HealthCheck:
+            Command: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 60
+
+  FrontendTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ProjectName}-frontend-${Environment}"
+      Cpu: "256"
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      ContainerDefinitions:
+        - Name: frontend
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${ProjectName}-frontend:latest"
+          PortMappings:
+            - ContainerPort: 8501
+              Protocol: tcp
+          Environment:
+            - Name: BACKEND_URL
+              Value: !Sub "http://backend.${ProjectName}.internal:8000"
+            - Name: ENVIRONMENT
+              Value: !Ref Environment
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref FrontendLogGroup
+              awslogs-region: !Ref AWSRegion
+              awslogs-stream-prefix: ecs
+
+  # =========================================================================
+  # 12. ECS SERVICES — Backend & Frontend Fargate Services
+  # =========================================================================
+  BackendECSService:
+    Type: AWS::ECS::Service
+    DependsOn: RDSInstance
+    Properties:
+      ServiceName: !Sub "${ProjectName}-backend-service-${Environment}"
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref BackendTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref PrivateSubnetA
+            - !Ref PrivateSubnetB
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          AssignPublicIp: DISABLED
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+
+  FrontendECSService:
+    Type: AWS::ECS::Service
+    DependsOn: BackendECSService
+    Properties:
+      ServiceName: !Sub "${ProjectName}-frontend-service-${Environment}"
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref FrontendTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets:
+            - !Ref PublicSubnetA
+            - !Ref PublicSubnetB
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+          AssignPublicIp: ENABLED
+
+# ===========================================================================
+# OUTPUTS
+# ===========================================================================
+Outputs:
+  VPCId:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Sub "${ProjectName}-VPCId-${Environment}"
+
+  ECSClusterName:
+    Description: ECS Cluster Name
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Sub "${ProjectName}-ECSCluster-${Environment}"
+
+  RDSEndpoint:
+    Description: RDS PostgreSQL endpoint address
+    Value: !GetAtt RDSInstance.Endpoint.Address
+    Export:
+      Name: !Sub "${ProjectName}-RDSEndpoint-${Environment}"
+
+  DataLakeBucketName:
+    Description: S3 Data Lake bucket name
+    Value: !Ref DataLakeBucket
+    Export:
+      Name: !Sub "${ProjectName}-DataLake-${Environment}"
+
+  CognitoUserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref CognitoUserPool
+    Export:
+      Name: !Sub "${ProjectName}-CognitoPool-${Environment}"
+
+  CognitoClientId:
+    Description: Cognito App Client ID
+    Value: !Ref CognitoUserPoolClient
+    Export:
+      Name: !Sub "${ProjectName}-CognitoClient-${Environment}"
+
+  BackendECRURI:
+    Description: Backend ECR Repository URI
+    Value: !GetAtt BackendECRRepo.RepositoryUri
+    Export:
+      Name: !Sub "${ProjectName}-BackendECR-${Environment}"
+
+  FrontendECRURI:
+    Description: Frontend ECR Repository URI
+    Value: !GetAtt FrontendECRRepo.RepositoryUri
+    Export:
+      Name: !Sub "${ProjectName}-FrontendECR-${Environment}"
+
+  DBSecretARN:
+    Description: Secrets Manager ARN for DB credentials
+    Value: !Ref DBSecret
+    Export:
+      Name: !Sub "${ProjectName}-DBSecret-${Environment}"
+
+  AthenaWorkgroupName:
+    Description: Athena Workgroup name
+    Value: !Ref AthenaWorkgroup
+    Export:
+      Name: !Sub "${ProjectName}-AthenaWG-${Environment}"

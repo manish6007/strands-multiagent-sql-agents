@@ -39,7 +39,7 @@ Week 5/
 │   ├── knowledge/           # KPI glossaries and schema dictionary markdown files
 │   └── sample_data/         # Parquet files for customers, orders, products, etc.
 ├── infra/
-│   ├── terraform/           # IaC modules (VPC, ECS, S3, RDS, Bedrock, Cognito, Secrets)
+│   ├── cloudformation/      # IaC modules — CloudFormation YAML template (VPC, ECS, S3, RDS, Bedrock, Cognito, Secrets)
 │   └── github-actions/      # GitHub Actions CI/CD workflows (.github/workflows/ci-cd.yml)
 ├── docs/                    # Architecture, agent design, RAG, MCP, and cost guides
 ├── docker-compose.yml       # Docker Compose setup for all services
@@ -115,19 +115,25 @@ Here is the recorded animation of the browser interaction (Knowledge Ingest & qu
 
 To deploy the platform to AWS production:
 
-### Infrastructure as Code (Terraform)
-1. Initialize Terraform from the `infra/terraform/` directory:
+### Infrastructure as Code (CloudFormation)
+1. Validate the CloudFormation template:
    ```bash
-   cd infra/terraform
-   terraform init
+   aws cloudformation validate-template \
+     --template-body file://infra/cloudformation/template.yaml
    ```
-2. Create your deployment plan:
+2. Deploy the AWS stack (VPC, ECS Fargate cluster, Cognito User Pools, RDS PostgreSQL with pgvector, S3 Lake, Amazon Athena, and Secrets Manager):
    ```bash
-   terraform plan -out=tfplan
+   aws cloudformation deploy \
+     --template-file infra/cloudformation/template.yaml \
+     --stack-name sql-agent-stack-dev \
+     --parameter-overrides ProjectName=sql-agent Environment=dev AWSRegion=us-east-1 \
+     --capabilities CAPABILITY_NAMED_IAM
    ```
-3. Deploy the AWS resources (VPC, ECS Fargate cluster, Cognito User Pools, RDS PostgreSQL with pgvector, S3 Lake, Amazon Athena, and Secrets Manager):
+3. View stack outputs (RDS endpoint, ECR URIs, Cognito pool ID, etc.):
    ```bash
-   terraform apply tfplan
+   aws cloudformation describe-stacks \
+     --stack-name sql-agent-stack-dev \
+     --query 'Stacks[0].Outputs'
    ```
 
 ### Docker Compilation & Pushes to ECR

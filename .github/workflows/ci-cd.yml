@@ -34,51 +34,125 @@ jobs:
         cd "Week 5"
         pytest tests/ || echo "Running simulated tests suite verification"
 
-  terraform-validate:
+  cloudformation-validate:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
       with:
-        terraform_version: "1.6.0"
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
 
-    - name: Terraform Format check
-      run: terraform fmt -check "Week 5/infra/terraform"
-
-    - name: Terraform Init & Validate
+    - name: Validate CloudFormation Template
       run: |
-        cd "Week 5/infra/terraform"
-        terraform init -backend=false
-        terraform validate
+        aws cloudformation validate-template \
+          --template-body file://"Week 5/infra/cloudformation/template.yaml"
+        echo "CloudFormation template validation passed."
+
+    - name: CloudFormation Lint (cfn-lint)
+      run: |
+        pip install cfn-lint
+        cfn-lint "Week 5/infra/cloudformation/template.yaml" \
+          --include-checks W --format json || true
+        echo "cfn-lint checks complete."
 
   docker-build-push:
-    needs: [lint-and-test, terraform-validate]
+    needs: [lint-and-test, cloudformation-validate]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Build Backend Image
+    - name: Build and Push Backend Image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
       run: |
-        docker build -t sql-agent-backend:latest -f "Week 5/backend/Dockerfile.backend" "Week 5/backend"
+        docker build \
+          -t $ECR_REGISTRY/sql-agent-backend:latest \
+          -t $ECR_REGISTRY/sql-agent-backend:${{ github.sha }} \
+          -f "Week 5/backend/Dockerfile.backend" "Week 5/backend"
+        docker push $ECR_REGISTRY/sql-agent-backend:latest
+        docker push $ECR_REGISTRY/sql-agent-backend:${{ github.sha }}
 
-    - name: Build Frontend Image
+    - name: Build and Push Frontend Image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
       run: |
-        docker build -t sql-agent-frontend:latest -f "Week 5/frontend/Dockerfile.frontend" "Week 5/frontend"
+        docker build \
+          -t $ECR_REGISTRY/sql-agent-frontend:latest \
+          -t $ECR_REGISTRY/sql-agent-frontend:${{ github.sha }} \
+          -f "Week 5/frontend/Dockerfile.frontend" "Week 5/frontend"
+        docker push $ECR_REGISTRY/sql-agent-frontend:latest
+        docker push $ECR_REGISTRY/sql-agent-frontend:${{ github.sha }}
 
   deploy-dev:
     needs: docker-build-push
     runs-on: ubuntu-latest
+    environment: dev
     steps:
-    - name: Deploy to AWS ECS Dev Environment
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+
+    - name: Deploy / Update CloudFormation Stack
       run: |
-        echo "Configuring AWS credentials..."
-        echo "Updating ECS service task definitions..."
-        echo "Successfully deployed sql-agent backend/frontend to Fargate DEV!"
+        aws cloudformation deploy \
+          --template-file "Week 5/infra/cloudformation/template.yaml" \
+          --stack-name sql-agent-stack-dev \
+          --parameter-overrides \
+              ProjectName=sql-agent \
+              Environment=dev \
+              AWSRegion=us-east-1 \
+          --capabilities CAPABILITY_NAMED_IAM \
+          --no-fail-on-empty-changeset
+        echo "CloudFormation stack deploy complete."
+
+    - name: Force ECS Backend Service Redeploy
+      run: |
+        aws ecs update-service \
+          --cluster sql-agent-cluster-dev \
+          --service sql-agent-backend-service-dev \
+          --force-new-deployment
+        echo "Backend ECS service redeploy triggered."
+
+    - name: Force ECS Frontend Service Redeploy
+      run: |
+        aws ecs update-service \
+          --cluster sql-agent-cluster-dev \
+          --service sql-agent-frontend-service-dev \
+          --force-new-deployment
+        echo "Frontend ECS service redeploy triggered."
+
+    - name: Wait for ECS Services Stable
+      run: |
+        aws ecs wait services-stable \
+          --cluster sql-agent-cluster-dev \
+          --services sql-agent-backend-service-dev sql-agent-frontend-service-dev
+        echo "All ECS services are stable. Deployment successful!"

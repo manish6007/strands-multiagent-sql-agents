@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Enterprise Text-to-SQL Analytics Agent Platform | AWS ECS Production Deployment</title>
+  <meta name="description" content="Enterprise GenAI Text-to-SQL Analytics Platform — Architecture, Bedrock Guardrails, Implementation & AWS ECS Deployment for Banking Production." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true, theme: 'dark', themeVariables: { fontSize: '15px' } });</script>
+  <style>
+    /* ─── Base Reset & Theme ─── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #0B1120;
+      color: #F8FAFC;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      scroll-behavior: smooth;
+      line-height: 1.7;
+    }
+
+    section {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 6rem 2rem 4rem;
+      max-width: 1060px;
+      margin: 0 auto;
+      border-bottom: 1px solid #1E293B;
+    }
+
+    h1 { font-size: 3rem; font-weight: 800; color: #38BDF8; line-height: 1.2; margin-bottom: 1rem; text-align: center; }
+    h2 { font-size: 2.1rem; font-weight: 700; color: #38BDF8; margin-bottom: 2rem; border-bottom: 3px solid #1E293B; padding-bottom: 0.5rem; display: inline-block; }
+    h3 { font-size: 1.45rem; color: #E2E8F0; font-weight: 600; margin-bottom: 1rem; margin-top: 1.5rem; }
+    h4 { font-size: 1.15rem; color: #BAE6FD; font-weight: 600; margin-bottom: 0.75rem; margin-top: 1.25rem; }
+    p, ul, ol { font-size: 1.1rem; line-height: 1.75; color: #CBD5E1; margin-bottom: 1.4rem; }
+    ul { list-style-type: disc; padding-left: 2rem; }
+    ol { list-style-type: decimal; padding-left: 2rem; }
+    li { margin-bottom: 0.6rem; }
+    strong { color: #E2E8F0; }
+    em { color: #94A3B8; }
+
+    /* ─── Box Components ─── */
+    .highlight-box {
+      background: #0F172A;
+      border-left: 6px solid #0EA5E9;
+      padding: 1.5rem 2rem;
+      margin: 2rem 0;
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);
+    }
+    .failure-box {
+      background: #450a0a;
+      border-left: 6px solid #EF4444;
+      padding: 1.5rem 2rem;
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);
+      margin: 1.5rem 0;
+    }
+    .success-box {
+      background: #052e16;
+      border-left: 6px solid #22C55E;
+      padding: 1.5rem 2rem;
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);
+      margin: 1.5rem 0;
+    }
+    .warning-box {
+      background: #1c1205;
+      border-left: 6px solid #F59E0B;
+      padding: 1.5rem 2rem;
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);
+      margin: 1.5rem 0;
+    }
+    .info-box {
+      background: #0c1a2e;
+      border-left: 6px solid #38BDF8;
+      padding: 1.5rem 2rem;
+      border-radius: 0.5rem;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.5);
+      margin: 1.5rem 0;
+    }
+    .lab-box {
+      background: #0f2027;
+      border-left: 6px solid #F59E0B;
+      padding: 1.25rem 1.75rem;
+      border-radius: 0.5rem;
+      margin: 1.5rem 0;
+      font-size: 1rem;
+      color: #FCD34D;
+    }
+    .lab-box::before {
+      content: "🔑 Key Concept";
+      display: block;
+      color: #F59E0B;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
+    .security-box {
+      background: #1a0a2e;
+      border-left: 6px solid #A78BFA;
+      padding: 1.5rem 2rem;
+      border-radius: 0.5rem;
+      margin: 1.5rem 0;
+    }
+    .security-box::before {
+      content: "🛡️ Security & Compliance";
+      display: block;
+      color: #A78BFA;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+    }
+
+    /* ─── Tables ─── */
+    table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; background: #1E293B; border-radius: 0.5rem; overflow: hidden; font-size: 1rem; }
+    th, td { padding: 0.85rem 1.25rem; border: 1px solid #334155; text-align: left; color: #CBD5E1; }
+    th { background-color: #0F172A; color: #F8FAFC; font-weight: 600; font-size: 0.95rem; letter-spacing: 0.03em; }
+    tr:hover td { background-color: #1a2740; }
+
+    /* ─── Mermaid ─── */
+    .mermaid {
+      background: #0F172A;
+      padding: 2rem;
+      border-radius: 0.5rem;
+      margin: 2rem 0;
+      display: flex;
+      justify-content: center;
+      overflow-x: auto;
+      border: 1px solid #1E293B;
+    }
+    .mermaid-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin: 2rem 0; }
+    @media(max-width: 700px) { .mermaid-row { grid-template-columns: 1fr; } }
+
+    /* ─── Code & Pre ─── */
+    code {
+      background: #1E293B;
+      color: #38BDF8;
+      padding: 0.2rem 0.45rem;
+      border-radius: 0.25rem;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 0.88em;
+    }
+    pre {
+      background: #020617;
+      border: 1px solid #334155;
+      padding: 1.5rem;
+      border-radius: 0.5rem;
+      overflow-x: auto;
+      margin-bottom: 1.5rem;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 0.88rem;
+      line-height: 1.7;
+    }
+    pre code { background: transparent; color: #94A3B8; padding: 0; font-size: inherit; }
+
+    /* ─── ASCII / Harness Box ─── */
+    .harness-box {
+      background: #020617;
+      border: 1px solid #334155;
+      padding: 1.5rem;
+      border-radius: 0.5rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      line-height: 1.7;
+      color: #38BDF8;
+      margin: 2rem 0;
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    /* ─── Top Nav ─── */
+    .top-nav {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      background: rgba(11, 17, 32, 0.95);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      padding: 0.85rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 50;
+      border-bottom: 1px solid #1E293B;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .nav-title { font-size: 0.95rem; font-weight: 700; color: #38BDF8; letter-spacing: 0.02em; }
+    .nav-meta { font-size: 0.8rem; color: #64748B; font-weight: 500; }
+    .nav-links { display: flex; gap: 1.5rem; }
+    .nav-links a {
+      font-size: 0.78rem;
+      color: #64748B;
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: #38BDF8; }
+
+    /* ─── Title Slide ─── */
+    .title-section {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 6rem 2rem 4rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .title-badge {
+      display: inline-block;
+      background: rgba(56,189,248,0.1);
+      border: 1px solid rgba(56,189,248,0.3);
+      color: #38BDF8;
+      padding: 0.4rem 1.2rem;
+      border-radius: 2rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+    }
+    .title-main {
+      font-size: clamp(2.5rem, 5vw, 4rem);
+      font-weight: 900;
+      line-height: 1.1;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, #38BDF8, #818CF8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .title-sub { font-size: 1.4rem; color: #94A3B8; font-weight: 400; margin-bottom: 2.5rem; max-width: 700px; }
+    .scroll-arrow {
+      position: absolute;
+      bottom: 2.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #38BDF8;
+      animation: bounce 2s infinite;
+      font-size: 2rem;
+      cursor: pointer;
+      opacity: 0.7;
+    }
+    @keyframes bounce {
+      0%, 100% { transform: translateX(-50%) translateY(0); }
+      50% { transform: translateX(-50%) translateY(12px); }
+    }
+
+    /* ─── Section Divider ─── */
+    .section-divider {
+      width: 60px;
+      height: 4px;
+      background: linear-gradient(90deg, #38BDF8, #818CF8);
+      border-radius: 2px;
+      margin: 0.75rem 0 2rem 0;
+    }
+
+    /* ─── Tags / Chips ─── */
+    .tag {
+      display: inline-block;
+      background: rgba(56,189,248,0.12);
+      border: 1px solid rgba(56,189,248,0.25);
+      color: #38BDF8;
+      padding: 0.2rem 0.7rem;
+      border-radius: 1rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-right: 0.4rem;
+      margin-bottom: 0.4rem;
+    }
+    .tag-red { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.25); color: #FCA5A5; }
+    .tag-green { background: rgba(34,197,94,0.1); border-color: rgba(34,197,94,0.25); color: #86EFAC; }
+    .tag-amber { background: rgba(245,158,11,0.1); border-color: rgba(245,158,11,0.25); color: #FCD34D; }
+    .tag-purple { background: rgba(167,139,250,0.1); border-color: rgba(167,139,250,0.25); color: #C4B5FD; }
+
+    /* ─── Card Grid ─── */
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; margin: 1.5rem 0; }
+    .card {
+      background: #0F172A;
+      border: 1px solid #1E293B;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+    }
+    .card h4 { margin-top: 0; }
+    .card-accent-left { border-left: 3px solid #38BDF8; }
+    .card-accent-red { border-left: 3px solid #EF4444; }
+    .card-accent-green { border-left: 3px solid #22C55E; }
+    .card-accent-amber { border-left: 3px solid #F59E0B; }
+    .card-accent-purple { border-left: 3px solid #A78BFA; }
+
+    /* ─── KPI Row ─── */
+    .kpi-row { display: flex; gap: 1.5rem; margin: 1.5rem 0; flex-wrap: wrap; }
+    .kpi-box {
+      flex: 1;
+      min-width: 140px;
+      background: #0F172A;
+      border: 1px solid rgba(56,189,248,0.2);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      text-align: center;
+    }
+    .kpi-num { font-size: 2.2rem; font-weight: 900; color: #38BDF8; font-family: 'JetBrains Mono', monospace; line-height: 1; margin-bottom: 0.4rem; }
+    .kpi-label { font-size: 0.8rem; color: #64748B; font-weight: 600; }
+
+    /* ─── Phase Timeline ─── */
+    .phase-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+    .phase-card {
+      background: #0F172A;
+      border: 1px solid #1E293B;
+      border-top: 3px solid #38BDF8;
+      border-radius: 0.5rem;
+      padding: 1.25rem;
+    }
+    .phase-card h4 { margin-top: 0; font-size: 1rem; }
+    .phase-tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 10px;
+      border-radius: 20px;
+      margin-top: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      background: rgba(56,189,248,0.15);
+      color: #38BDF8;
+      border: 1px solid rgba(56,189,248,0.3);
+    }
+
+    /* ─── Roadmap ─── */
+    .roadmap-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin: 1.5rem 0; }
+    .roadmap-col {}
+    .roadmap-col > h3 {
+      padding: 0.6rem 1rem;
+      border-radius: 0.4rem;
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+      margin-top: 0;
+    }
+    .roadmap-col.phase-q1 > h3 { background: rgba(56,189,248,0.12); color: #38BDF8; border: 1px solid rgba(56,189,248,0.25); }
+    .roadmap-col.phase-q2 > h3 { background: rgba(245,158,11,0.12); color: #FCD34D; border: 1px solid rgba(245,158,11,0.25); }
+    .roadmap-col.phase-q3 > h3 { background: rgba(167,139,250,0.12); color: #C4B5FD; border: 1px solid rgba(167,139,250,0.25); }
+    .roadmap-item {
+      background: #0F172A;
+      border: 1px solid #1E293B;
+      border-radius: 0.5rem;
+      padding: 1rem 1.2rem;
+      margin-bottom: 0.75rem;
+    }
+    .roadmap-item h4 { margin-top: 0; font-size: 1rem; color: #E2E8F0; }
+    .roadmap-item p { font-size: 0.92rem; margin-bottom: 0; color: #94A3B8; }
+    .status-badge {
+      display: inline-block;
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 12px;
+      margin-bottom: 0.5rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .s-priority { background: rgba(239,68,68,0.15); color: #FCA5A5; border: 1px solid rgba(239,68,68,0.3); }
+    .s-planned  { background: rgba(56,189,248,0.15); color: #7DD3FC; border: 1px solid rgba(56,189,248,0.3); }
+    .s-research { background: rgba(245,158,11,0.15); color: #FCD34D; border: 1px solid rgba(245,158,11,0.3); }
+
+    /* ─── Step List ─── */
+    .step-list { list-style: none; padding: 0; counter-reset: steps; }
+    .step-list li {
+      counter-increment: steps;
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      margin-bottom: 1.25rem;
+      padding: 1rem 1.25rem;
+      background: #0F172A;
+      border: 1px solid #1E293B;
+      border-radius: 0.5rem;
+    }
+    .step-list li::before {
+      content: "0" counter(steps);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #38BDF8;
+      flex-shrink: 0;
+      min-width: 2rem;
+    }
+
+    /* ─── Print ─── */
+    @media print {
+      .top-nav { display: none; }
+      section { page-break-after: always; min-height: auto; padding: 2rem 1.5rem; max-width: 100%; border-bottom: none; }
+      body { background: #fff; color: #000; }
+      h1, h2, h3 { color: #0369a1; }
+      .mermaid { border: 1px solid #ccc; }
+      .scroll-arrow { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ─── TOP NAV ─── -->
+<nav class="top-nav" id="top-nav" role="navigation">
+  <div class="nav-title">Enterprise GenAI • Week 5 • Text-to-SQL Analytics Agent Platform</div>
+  <nav class="nav-links" aria-label="Section navigation">
+    <a href="#problem">Problem</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#guardrails">Guardrails</a>
+    <a href="#infrastructure">Infra</a>
+    <a href="#deployment">Deploy</a>
+    <a href="#roadmap">Roadmap</a>
+  </nav>
+  <div class="nav-meta">AWS ECS Production</div>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 1 — TITLE                                           -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="title-section" id="slide-1" role="main">
+  <div class="title-badge">Week 5 of 6 &nbsp;•&nbsp; Capstone Project &nbsp;•&nbsp; Enterprise AI Masterclass</div>
+  <h1 class="title-main">ENTERPRISE TEXT-TO-SQL<br/>ANALYTICS AGENT</h1>
+  <p class="title-sub">A Production-Grade Multi-Agent Platform deployed on AWS ECS Fargate</p>
+
+  <div class="highlight-box" style="max-width:860px; text-align:left;">
+    <p style="font-size:1.25rem; font-weight:700; color:#E2E8F0; margin-bottom:0.75rem;">THE CAPSTONE THESIS</p>
+    <p style="font-size:1.05rem; color:#CBD5E1; margin:0; font-style:italic; line-height:1.7;">
+      "Business analysts should be able to ask questions in plain English and get instant, trusted, chart-ready answers from a multi-terabyte data warehouse — without writing a single line of SQL. The platform enforces banking-grade security through Bedrock Guardrails, validates every query with a 7-agent pipeline, and deploys to production via fully automated CI/CD."
+    </p>
+  </div>
+
+  <div style="margin-top:1.5rem; display:flex; gap:0.75rem; flex-wrap:wrap; justify-content:center;">
+    <span class="tag">7 AI Agents</span>
+    <span class="tag">Bedrock Guardrails</span>
+    <span class="tag">MCP Protocol</span>
+    <span class="tag">pgvector RAG</span>
+    <span class="tag">AWS ECS Fargate</span>
+    <span class="tag">CloudFormation IaC</span>
+    <span class="tag">GitHub Actions CI/CD</span>
+    <span class="tag">Langfuse Observability</span>
+  </div>
+
+  <div class="scroll-arrow" onclick="document.getElementById('problem').scrollIntoView({behavior:'smooth'})" aria-label="Scroll down">↓</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 2 — AGENDA                                          -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="agenda">
+  <h2>What We Cover Today</h2>
+  <div class="section-divider"></div>
+
+  <table>
+    <thead><tr><th>#</th><th>Section</th><th>Key Topics</th></tr></thead>
+    <tbody>
+      <tr><td>01</td><td><strong>Business Problem</strong></td><td>SQL bottleneck, schema complexity, audit gaps, KPIs</td></tr>
+      <tr><td>02</td><td><strong>Requirements</strong></td><td>5 functional + 5 non-functional requirements</td></tr>
+      <tr><td>03</td><td><strong>Architecture Diagram</strong></td><td>End-to-end 5-layer system with all 7 agents and AWS services</td></tr>
+      <tr><td>04</td><td><strong>Multi-Agent Design</strong></td><td>Supervisor, RAG, SQL Gen, SQL Review, Exec, Chart, Response</td></tr>
+      <tr><td>05</td><td><strong>MCP & RAG</strong></td><td>Tool-calling registry, vector search, 4-step RAG pipeline</td></tr>
+      <tr><td>06</td><td><strong>Tech Stack</strong></td><td>15 technologies across AI, Data, Infra, Observability</td></tr>
+      <tr><td>07</td><td><strong>Bedrock Guardrails</strong></td><td>Topic policy, content filters, PII redaction, grounding</td></tr>
+      <tr><td>08</td><td><strong>AWS Infrastructure</strong></td><td>CloudFormation — VPC, ECS, RDS, Cognito, Athena, S3</td></tr>
+      <tr><td>09</td><td><strong>Deployment Steps</strong></td><td>6-step AWS production deployment guide</td></tr>
+      <tr><td>10</td><td><strong>CI/CD Pipeline</strong></td><td>GitHub Actions 4-job pipeline with cfn-lint and ECS deploy</td></tr>
+      <tr><td>11</td><td><strong>Security & Compliance</strong></td><td>RBI / Basel III / ISO 27001 controls</td></tr>
+      <tr><td>12</td><td><strong>Observability</strong></td><td>Langfuse traces, CloudWatch, cost metrics</td></tr>
+      <tr><td>13</td><td><strong>Future Roadmap</strong></td><td>RAGAS evaluation, fine-tuning, A/B testing, SSO</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 3 — BUSINESS PROBLEM                                -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="problem">
+  <h2>Business Problem</h2>
+  <div class="section-divider"></div>
+
+  <h3>Analysts Blocked by SQL Complexity</h3>
+  <p>Business analysts in retail banking need data insights daily but depend on scarce data engineers to write queries — creating backlogs and expensive decision delays.</p>
+
+  <div class="kpi-row">
+    <div class="kpi-box"><div class="kpi-num">3–5</div><div class="kpi-label">Day avg. wait<br/>for a SQL report</div></div>
+    <div class="kpi-box"><div class="kpi-num">80%</div><div class="kpi-label">Analyst time on<br/>data wrangling</div></div>
+    <div class="kpi-box"><div class="kpi-num">$2M+</div><div class="kpi-label">Annual cost of<br/>delayed decisions</div></div>
+    <div class="kpi-box"><div class="kpi-num">500+</div><div class="kpi-label">Tables in production<br/>data warehouse</div></div>
+  </div>
+
+  <div class="failure-box">
+    <p style="margin:0; font-weight:700; color:#FCA5A5;">Pain Points Driving This Project</p>
+    <ul style="margin:0.75rem 0 0; color:#FCA5A5;">
+      <li><strong>SQL Dependency Bottleneck:</strong> Every insight requires engineering time — creating a critical knowledge silo and P1 escalations for board-level dashboards.</li>
+      <li><strong>Schema Complexity at Scale:</strong> Production warehouses in banks have 500+ tables. Without context-aware retrieval, even senior engineers make errors.</li>
+      <li><strong>No Audit Trail for AI Queries:</strong> Regulatory compliance (RBI / Basel III) requires every data access to be logged, reviewed, and safe — standard LLMs lack this.</li>
+      <li><strong>Uncontrolled LLM Scope:</strong> Out-of-the-box LLMs answer ANY question — from coding to news — creating security and compliance risks in banking context.</li>
+    </ul>
+  </div>
+
+  <div class="success-box">
+    <p style="margin:0; font-weight:700; color:#86EFAC; font-size:1.1rem;">✅ Solution: Text-to-SQL Multi-Agent Platform with Guardrails</p>
+    <p style="margin:0.5rem 0 0;">Let business users ask banking questions in plain English. The agent pipeline generates, validates, executes and summarises results — safely, with Bedrock Guardrails enforcing topic boundaries and full audit telemetry via Langfuse.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 4 — REQUIREMENTS                                    -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="requirements">
+  <h2>Requirements</h2>
+  <div class="section-divider"></div>
+
+  <div class="mermaid-row">
+    <div>
+      <h3>🔷 Functional Requirements</h3>
+      <ul>
+        <li><strong>NL Query Interface:</strong> Users type plain-English questions and receive structured data, charts, and executive summaries.</li>
+        <li><strong>RAG-Enhanced Schema Context:</strong> Retrieve relevant table definitions, KPI glossaries and business rules before generating SQL.</li>
+        <li><strong>SQL Safety Validation:</strong> All generated SQL must be reviewed — only SELECT allowed. DDL/DML blocked at agent level.</li>
+        <li><strong>Bedrock Guardrails:</strong> Topic-filtered to banking analytics only; blocks abusive language, off-topic queries, and PII leakage.</li>
+        <li><strong>Self-Healing Query Repair:</strong> On Athena execution failure, the agent invokes an LLM repair loop to correct and retry the query.</li>
+      </ul>
+    </div>
+    <div>
+      <h3>⚙️ Non-Functional Requirements</h3>
+      <ul>
+        <li><strong>Performance — P95 &lt; 15s</strong> end-to-end response time from NL query to chart render.</li>
+        <li><strong>Availability — 99.9% SLA</strong> via ECS rolling deployments and multi-AZ RDS.</li>
+        <li><strong>Security — Zero-trust</strong> Cognito JWT authentication, Secrets Manager, VPC isolation, IAM least-privilege.</li>
+        <li><strong>Scalability — Horizontal</strong> auto-scaling on CPU metrics; Fargate serverless compute for elastic capacity.</li>
+        <li><strong>Auditability — Full trace</strong> every agent step, tool call, guardrail decision, and SQL execution logged to Langfuse + CloudWatch.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 5 — ARCHITECTURE DIAGRAM                            -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="architecture">
+  <h2>System Architecture</h2>
+  <div class="section-divider"></div>
+
+  <h3>End-to-End Request Flow</h3>
+  <p>The platform is a 5-layer containerised system. A business analyst's natural-language question travels from the Streamlit dashboard through Cognito authentication, passes through Bedrock Guardrails, enters the 7-agent Strands pipeline, and hits AWS managed services before returning a chart + executive summary.</p>
+
+  <div class="mermaid">
+graph TD
+    USER["👤 Business Analyst<br/>(Natural Language Question)"]
+    DASH["🌐 Streamlit Dashboard<br/>ECS Fargate · Port 8501"]
+    AUTH["🔒 Amazon Cognito<br/>JWT Bearer Token"]
+    ALB["⚖️ Application Load Balancer<br/>HTTPS · SSL Termination"]
+    API["⚡ FastAPI Backend<br/>ECS Fargate · Port 8000"]
+    GR["🛡️ Bedrock Guardrails<br/>Topic · Content · PII Filter"]
+    SUP["🧠 Supervisor Agent<br/>Strands Orchestrator"]
+    RAG["📚 RAG Agent<br/>pgvector Search"]
+    SQLG["✍️ SQL Gen Agent<br/>Claude Sonnet 4.5"]
+    SQLR["🔍 SQL Review Agent<br/>Safety Validator"]
+    EXEC["⚙️ Execution Agent<br/>Self-Heal Loop"]
+    CHART["📊 Chart Agent<br/>Plotly Visualisation"]
+    RESP["📝 Response Agent<br/>Executive Summary"]
+
+    BED["🤖 Amazon Bedrock<br/>Claude 4.5 · Titan Embeddings"]
+    ATH["🗄️ Amazon Athena<br/>Presto SQL · S3 Query Engine"]
+    S3["🪣 S3 Data Lake<br/>Parquet · AES-256 SSE"]
+    RDS["🧲 RDS PostgreSQL<br/>pgvector · Embeddings Store"]
+    SEC["🔑 Secrets Manager<br/>DB Creds · API Keys"]
+    OBS["📡 Langfuse + CloudWatch<br/>Traces · Metrics · Alarms"]
+
+    USER -->|NL Question| DASH
+    DASH -->|HTTPS Request| ALB
+    ALB -->|JWT Validation| AUTH
+    ALB --> API
+    API -->|Input Filter| GR
+    GR -->|Allowed Query| SUP
+    GR -->|"⛔ Blocked (off-topic/abusive)"| USER
+
+    SUP --> RAG
+    SUP --> SQLG
+    SQLG --> SQLR
+    SQLR -->|Validated SQL| EXEC
+    EXEC --> CHART
+    EXEC --> RESP
+
+    RAG <-->|Vector Search| RDS
+    EXEC <-->|SQL Execution| ATH
+    ATH <--> S3
+    SQLG <-->|LLM Call| BED
+    SUP <-->|LLM Call| BED
+    API --- SEC
+    SUP --- OBS
+
+    style GR fill:#3d0000,stroke:#EF4444,stroke-width:2px,color:#FCA5A5
+    style SUP fill:#0D2D45,stroke:#38BDF8,stroke-width:2px,color:#E2E8F0
+    style USER fill:#052e16,stroke:#22C55E,color:#E2E8F0
+    style BED fill:#2d1f00,stroke:#F59E0B,color:#E2E8F0
+    style ATH fill:#2d1f00,stroke:#F59E0B,color:#E2E8F0
+    style S3 fill:#2d1f00,stroke:#F59E0B,color:#E2E8F0
+    style RDS fill:#2d1f00,stroke:#F59E0B,color:#E2E8F0
+  </div>
+
+  <div class="harness-box">REQUEST LIFECYCLE — What happens in ~8 seconds
+
+ User: "Show me top 10 customers by loan default rate in Q3 2024"
+   │
+   ▼
+ [Cognito] JWT token validated  ────────────────────── ✅ Auth (50ms)
+   │
+   ▼
+ [Bedrock Guardrails] Topic Policy check ────────────── ✅ Banking topic (120ms)
+                       Content Filter check ────────────── ✅ No abuse (30ms)
+                       PII scan ───────────────────────── ✅ No PII in query (20ms)
+   │
+   ▼
+ [Supervisor Agent] Routes to RAG + SQL Gen ──────────── Strands Orchestration
+   │
+   ├── [RAG Agent] Semantic search on pgvector ──────── "loans table, default_flag, cust_id" (1.4s)
+   │
+   ├── [SQL Gen Agent] Claude generates Athena SQL ──── SELECT query with LIMIT 10 (2.9s)
+   │
+   ├── [SQL Review Agent] Validates: only SELECT ──────── ✅ Safe, no DDL (0.8s)
+   │
+   ├── [Exec Agent] Runs on Amazon Athena ───────────── 8,432 rows scanned, 10 returned (1.6s)
+   │
+   ├── [Chart Agent] Infers Bar chart → Plotly JSON ── ✅ (0.4s)
+   │
+   └── [Response Agent] Executive markdown summary ──── 2 paragraphs + 3 insights (1.1s)
+   │
+   ▼
+ Streamlit renders: Table + Bar Chart + Summary ─────── Total: ~8.2s</div>
+
+  <div class="lab-box">
+    <p style="color:#FCD34D; margin:0;">The Guardrails filter runs BEFORE any LLM call. This means off-topic or abusive queries never consume Bedrock tokens — they are rejected at the gateway with a polite message and a denial log entry in CloudWatch.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 6 — MULTI-AGENT DESIGN                              -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="agents">
+  <h2>Multi-Agent Design</h2>
+  <div class="section-divider"></div>
+
+  <h3>7-Agent Orchestration Pipeline</h3>
+  <p>Each agent has a single, well-defined responsibility. This separation makes the system testable, debuggable, and allows individual agents to be swapped or scaled independently.</p>
+
+  <div class="mermaid">
+graph LR
+    SUP["🧠 Supervisor<br/>Orchestrator"]
+    RAG["📚 RAG Agent<br/>Schema Context"]
+    SQLG["✍️ SQL Gen<br/>Claude 4.5"]
+    SQLR["🛡️ SQL Review<br/>Safety Gate"]
+    EXEC["⚙️ Exec Agent<br/>Self-Heal"]
+    CHART["📊 Chart Agent<br/>Plotly"]
+    RESP["📝 Response<br/>Executive"]
+
+    SUP --> RAG --> SQLG --> SQLR --> EXEC --> CHART
+    EXEC --> RESP
+
+    style SUP fill:#0D2D45,stroke:#38BDF8,stroke-width:2px,color:#E2E8F0
+    style SQLR fill:#2d0000,stroke:#EF4444,color:#FCA5A5
+    style EXEC fill:#1a2e1a,stroke:#22C55E,color:#E2E8F0
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>Agent</th><th>Responsibility</th><th>Model / Tool</th><th>Output</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>🧠 <strong>Supervisor</strong></td><td>Intent classification, routing, aggregation</td><td>Claude Sonnet 4.5 via Strands</td><td>Orchestrated pipeline result</td></tr>
+      <tr><td>📚 <strong>RAG Agent</strong></td><td>Semantic search on schema glossary</td><td>pgvector MCP tool</td><td>Top-3 schema + KPI context chunks</td></tr>
+      <tr><td>✍️ <strong>SQL Gen</strong></td><td>Translate NL + context → Athena SQL</td><td>Claude Sonnet 4.5 via Bedrock</td><td>Presto-compatible SELECT query</td></tr>
+      <tr><td>🛡️ <strong>SQL Review</strong></td><td>Safety validation: only SELECT allowed</td><td>Rule-based + LLM check</td><td>PASS / FAIL + fix suggestion</td></tr>
+      <tr><td>⚙️ <strong>Exec Agent</strong></td><td>Execute SQL on Athena, self-heal on error</td><td>Athena MCP tool</td><td>JSON rows result set</td></tr>
+      <tr><td>📊 <strong>Chart Agent</strong></td><td>Infer chart type, generate Plotly config</td><td>Claude + Plotly</td><td>Interactive chart JSON</td></tr>
+      <tr><td>📝 <strong>Response Agent</strong></td><td>Executive markdown summary with insights</td><td>Claude Sonnet 4.5</td><td>2-paragraph business narrative</td></tr>
+    </tbody>
+  </table>
+
+  <div class="highlight-box">
+    <p style="margin:0; font-weight:700; color:#38BDF8;">Why Not a Single Agent?</p>
+    <p style="margin:0.5rem 0 0;">A monolithic "super-prompt" agent fails enterprise requirements: (1) No audit trail per step. (2) Cannot isolate SQL safety from generation logic. (3) Cannot replace the chart engine without affecting SQL. (4) One agent failure cascades. Separation of concerns is the single most important architectural decision in this project.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 7 — MCP & RAG                                       -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="mcp">
+  <h2>MCP Protocol & RAG Pipeline</h2>
+  <div class="section-divider"></div>
+
+  <div class="mermaid-row">
+    <div>
+      <h3>🔌 Model Context Protocol (MCP)</h3>
+      <p>MCP gives agents a typed, registry-based way to call AWS services. Agents never call AWS APIs directly — they call named tools through the MCP dispatcher.</p>
+      <div class="card card-accent-left">
+        <h4>Registered MCP Servers</h4>
+        <ul>
+          <li><code>athena_mcp</code> → <code>execute_sql_query(sql, workgroup)</code></li>
+          <li><code>postgres_mcp</code> → <code>semantic_search_glossary(query, k)</code></li>
+          <li><code>s3_mcp</code> → <code>retrieve_knowledge_document(key)</code></li>
+        </ul>
+      </div>
+      <div class="lab-box">
+        <p style="color:#FCD34D; margin:0;">Benefit: swapping Athena for BigQuery only requires updating the MCP server — zero changes to agent code.</p>
+      </div>
+    </div>
+    <div>
+      <h3>📚 RAG — 4-Step Pipeline</h3>
+      <div class="mermaid">
+graph TD
+    ING["📥 Ingestion<br/>Markdown chunks embedded<br/>via Bedrock Titan"]
+    STORE["🧲 pgvector Store<br/>1536-dim embeddings"]
+    SEARCH["🔍 Semantic Search<br/>Cosine similarity<br/>Top-3 chunks"]
+    PROMPT["📋 Prompt Assembly<br/>NL + Schema + KPIs<br/>→ SQL Gen Agent"]
+
+    ING --> STORE --> SEARCH --> PROMPT
+
+    style ING fill:#1E293B,stroke:#38BDF8,color:#E2E8F0
+    style STORE fill:#2d1f00,stroke:#F59E0B,color:#E2E8F0
+    style SEARCH fill:#1E293B,stroke:#22C55E,color:#E2E8F0
+    style PROMPT fill:#0D4429,stroke:#22C55E,color:#E2E8F0
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 8 — TECH STACK                                      -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="stack">
+  <h2>Technology Stack</h2>
+  <div class="section-divider"></div>
+
+  <table>
+    <thead><tr><th>Category</th><th>Technology</th><th>Role</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag-purple">AI/LLM</span></td><td><strong>Amazon Bedrock</strong> — Claude Sonnet 4.5</td><td>Foundation model API via ConverseStream</td></tr>
+      <tr><td><span class="tag-purple">AI/LLM</span></td><td><strong>Strands Agents SDK</strong></td><td>Open-source agent orchestration framework</td></tr>
+      <tr><td><span class="tag-purple">AI/LLM</span></td><td><strong>Bedrock Guardrails</strong></td><td>Topic, content, PII, and grounding filters</td></tr>
+      <tr><td><span class="tag-purple">AI/LLM</span></td><td><strong>MCP Protocol</strong></td><td>Typed tool-calling registry for AWS services</td></tr>
+      <tr><td><span class="tag">Data</span></td><td><strong>Amazon Athena</strong></td><td>Serverless Presto SQL on S3 data lake</td></tr>
+      <tr><td><span class="tag">Data</span></td><td><strong>DuckDB</strong></td><td>Local Athena mock against Parquet files</td></tr>
+      <tr><td><span class="tag">Data</span></td><td><strong>RDS PostgreSQL + pgvector</strong></td><td>Vector embeddings store for RAG</td></tr>
+      <tr><td><span class="tag">Data</span></td><td><strong>Amazon S3</strong></td><td>Parquet data lake + Athena query results</td></tr>
+      <tr><td><span class="tag-green">Infra</span></td><td><strong>AWS ECS Fargate</strong></td><td>Serverless container runtime for backend + frontend</td></tr>
+      <tr><td><span class="tag-green">Infra</span></td><td><strong>CloudFormation</strong></td><td>Declarative YAML IaC for full AWS stack</td></tr>
+      <tr><td><span class="tag-green">Infra</span></td><td><strong>Amazon Cognito</strong></td><td>User pool authentication, JWT token issuance</td></tr>
+      <tr><td><span class="tag-green">Infra</span></td><td><strong>Secrets Manager</strong></td><td>Encrypted storage for DB credentials and API keys</td></tr>
+      <tr><td><span class="tag-green">Infra</span></td><td><strong>FastAPI + Streamlit</strong></td><td>REST backend + interactive analytics dashboard</td></tr>
+      <tr><td><span class="tag-amber">Obs</span></td><td><strong>Langfuse</strong></td><td>LLM observability — agent traces, token usage, cost</td></tr>
+      <tr><td><span class="tag-amber">Obs</span></td><td><strong>CloudWatch</strong></td><td>ECS metrics, alarms, guardrail denial logs</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 9 — BEDROCK GUARDRAILS                              -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="guardrails">
+  <h2>Bedrock Guardrails — AI Safety Layer</h2>
+  <div class="section-divider"></div>
+
+  <p>Guardrails sit <strong>between the user query and the LLM</strong>, enforcing banking-specific topic boundaries, blocking abusive content, and protecting sensitive customer data — before Claude ever sees the message. This is a critical regulatory requirement for banking deployments.</p>
+
+  <div class="harness-box">GUARDRAIL FILTER PIPELINE
+
+ User Input ──────────────────────────────────────────────────────────────┐
+                                                                          │
+ ┌─────────────────────────────────────────────────────────────────────┐  │
+ │                     BEDROCK GUARDRAILS                               │◄─┘
+ │                                                                      │
+ │  ① TOPIC POLICY CHECK                                                │
+ │     ✅ ALLOW: "Show revenue by region Q3 2024"                       │
+ │     ⛔ BLOCK: "Write Python code for a web scraper"                  │
+ │     ⛔ BLOCK: "What happened in the stock market today?"             │
+ │     ⛔ BLOCK: "Tell me a joke" / "Who is Elon Musk?"                │
+ │                                                                      │
+ │  ② CONTENT FILTER (violence, hate, sexual, insults, profanity)      │
+ │     ⛔ BLOCKED — HIGH sensitivity on all categories                  │
+ │     ⛔ Custom word list: abusive terms in 10+ Indian languages       │
+ │     ⛔ Bank-specific: "password", "secret key", "hack"               │
+ │                                                                      │
+ │  ③ PII DETECTION & REDACTION                                         │
+ │     🔒 Customer PAN → [REDACTED]                                     │
+ │     🔒 Account numbers → last 4 digits only                          │
+ │     🔒 Mobile / email → [MASKED]                                     │
+ │                                                                      │
+ │  ④ OUTPUT GROUNDING CHECK                                            │
+ │     ✅ Response must reference retrieved schema data                  │
+ │     ⛔ Hallucinated table/column names rejected by Review Agent      │
+ │                                                                      │
+ └─────────────────────────────────────────────────────────────────────┘
+          │ PASS                           │ BLOCK
+          ▼                               ▼
+ Claude Sonnet 4.5 ──────────────  "I can only answer banking
+ (LLM receives                      analytics questions. Please
+  clean, safe query)                rephrase your query." + log</div>
+
+  <div class="mermaid-row">
+    <div>
+      <h3>✅ Allowed Topics</h3>
+      <ul>
+        <li>Banking analytics & KPI questions</li>
+        <li>Financial data queries (revenue, loans, NPAs)</li>
+        <li>Customer segmentation & product analysis</li>
+        <li>Transaction volume and trend analysis</li>
+        <li>Branch and regional performance metrics</li>
+        <li>Regulatory reporting data queries</li>
+      </ul>
+    </div>
+    <div>
+      <h3>⛔ Blocked Categories</h3>
+      <ul>
+        <li>General coding (<em>"write me a Python script"</em>)</li>
+        <li>News & current events (<em>"what happened in markets?"</em>)</li>
+        <li>Medical / legal advice questions</li>
+        <li>Competitor product comparisons</li>
+        <li>Violence, hate speech, sexual content</li>
+        <li>Insults, profanity, abusive language</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="security-box">
+    <p style="margin:0; color:#C4B5FD;">All guardrail denial events are logged to CloudWatch Logs with: timestamp, user ID (from JWT), query text (sanitised), denial reason, and guardrail policy triggered. This provides a complete RBI-compliant audit trail for every rejected AI interaction.</p>
+  </div>
+
+  <div class="warning-box">
+    <p style="margin:0; color:#FCD34D; font-weight:600;">CloudFormation Guardrail Resource</p>
+    <p style="margin:0.5rem 0 0; color:#E2E8F0;">Add <code>AWS::Bedrock::Guardrail</code> to the CloudFormation template with <code>TopicPolicyConfig</code> listing denied topics, <code>ContentPolicyConfig</code> with filter thresholds, and <code>SensitiveInformationPolicyConfig</code> for PII types. Reference the Guardrail ARN in the backend environment variable <code>GUARDRAIL_ID</code>.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 10 — AWS INFRASTRUCTURE                             -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="infrastructure">
+  <h2>AWS Infrastructure (CloudFormation)</h2>
+  <div class="section-divider"></div>
+
+  <p>All infrastructure is provisioned as code using a single CloudFormation YAML template at <code>infra/cloudformation/template.yaml</code>. The stack is parameterised for dev, staging, and prod environments via the <code>Environment</code> parameter.</p>
+
+  <div class="mermaid">
+graph TD
+    subgraph VPC ["🌐 VPC — 10.0.0.0/16"]
+        subgraph PUB ["Public Subnets (10.0.1.x, 10.0.2.x)"]
+            ALB["⚖️ Application Load Balancer"]
+            FE["🎨 Frontend ECS<br/>Streamlit :8501"]
+        end
+        subgraph PRIV ["Private Subnets (10.0.10.x, 10.0.11.x)"]
+            BE["⚡ Backend ECS<br/>FastAPI :8000"]
+            RDS["🧲 RDS PostgreSQL<br/>pgvector · Multi-AZ"]
+        end
+    end
+
+    subgraph AWS ["AWS Managed Services"]
+        BED["🤖 Amazon Bedrock<br/>Claude 4.5"]
+        ATH["🗄️ Amazon Athena<br/>+ S3 Data Lake"]
+        COG["🔒 Cognito<br/>User Pool"]
+        SEC["🔑 Secrets Manager"]
+        ECR["📦 ECR Repositories<br/>backend / frontend"]
+        CW["📡 CloudWatch<br/>Logs + Alarms"]
+        GR["🛡️ Bedrock Guardrails"]
+    end
+
+    Internet --> ALB
+    ALB --> FE
+    ALB --> BE
+    BE --> RDS
+    BE --> BED
+    BE --> ATH
+    BE --> GR
+    BE --- SEC
+    BE --- CW
+
+    style GR fill:#3d0000,stroke:#EF4444,color:#FCA5A5
+    style RDS fill:#2d1f00,stroke:#F59E0B,color:#E2E8F0
+    style BED fill:#2d1f00,stroke:#F59E0B,color:#E2E8F0
+  </div>
+
+  <h3>CloudFormation Resources Provisioned</h3>
+  <table>
+    <thead><tr><th>Resource Type</th><th>CloudFormation Logical ID</th><th>Key Config</th></tr></thead>
+    <tbody>
+      <tr><td><code>AWS::EC2::VPC</code></td><td>VPC</td><td>CIDR: 10.0.0.0/16, DNS enabled</td></tr>
+      <tr><td><code>AWS::RDS::DBInstance</code></td><td>RDSInstance</td><td>Postgres 16.1, pgvector, StorageEncrypted, MultiAZ per env</td></tr>
+      <tr><td><code>AWS::S3::Bucket</code></td><td>DataLakeBucket</td><td>AES-256 SSE, versioning, block public access</td></tr>
+      <tr><td><code>AWS::Athena::WorkGroup</code></td><td>AthenaWorkgroup</td><td>Results → S3, CloudWatch metrics enabled</td></tr>
+      <tr><td><code>AWS::Cognito::UserPool</code></td><td>CognitoUserPool</td><td>Email auth, strong password policy, JWT refresh</td></tr>
+      <tr><td><code>AWS::SecretsManager::Secret</code></td><td>DBSecret</td><td>JSON with host, port, user, password</td></tr>
+      <tr><td><code>AWS::IAM::Role</code></td><td>ECSTaskRole</td><td>Bedrock + Athena + S3 + Secrets — least privilege</td></tr>
+      <tr><td><code>AWS::ECR::Repository</code></td><td>BackendECRRepo / FrontendECRRepo</td><td>Scan on push, AES-256</td></tr>
+      <tr><td><code>AWS::ECS::Cluster</code></td><td>ECSCluster</td><td>Container Insights enabled</td></tr>
+      <tr><td><code>AWS::ECS::TaskDefinition</code></td><td>BackendTaskDefinition</td><td>0.5 vCPU · 1GB · awsvpc · health check</td></tr>
+      <tr><td><code>AWS::ECS::Service</code></td><td>BackendECSService</td><td>Fargate, circuit-breaker rollback, rolling deploy</td></tr>
+    </tbody>
+  </table>
+
+  <div class="lab-box">
+    <p style="color:#FCD34D; margin:0;">The <code>Mappings</code> block in the template selects <code>db.t4g.micro</code> (dev), <code>db.t4g.small</code> (staging), and <code>db.t4g.medium</code> with <code>MultiAZ: true</code> (prod) automatically — no parameter changes needed between environments.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 11 — ECS SERVICE DESIGN                             -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="ecs">
+  <h2>ECS Fargate Service Design</h2>
+  <div class="section-divider"></div>
+
+  <div class="mermaid-row">
+    <div>
+      <h3>⚡ Backend Service — FastAPI</h3>
+      <div class="card card-accent-left">
+        <ul>
+          <li><strong>Image:</strong> <code>&lt;ACCOUNT&gt;.dkr.ecr.us-east-1.amazonaws.com/sql-agent-backend:latest</code></li>
+          <li><strong>CPU:</strong> 512 units (0.5 vCPU)</li>
+          <li><strong>Memory:</strong> 1024 MB</li>
+          <li><strong>Port:</strong> 8000 (awsvpc mode)</li>
+          <li><strong>Health check:</strong> <code>curl -f http://localhost:8000/health</code></li>
+          <li><strong>Subnet:</strong> Private (no public IP)</li>
+          <li><strong>Scaling:</strong> min 1 → max 4 tasks on CPU &gt; 70%</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <h3>🎨 Frontend Service — Streamlit</h3>
+      <div class="card card-accent-left">
+        <ul>
+          <li><strong>Image:</strong> <code>&lt;ACCOUNT&gt;.dkr.ecr.us-east-1.amazonaws.com/sql-agent-frontend:latest</code></li>
+          <li><strong>CPU:</strong> 256 units (0.25 vCPU)</li>
+          <li><strong>Memory:</strong> 512 MB</li>
+          <li><strong>Port:</strong> 8501</li>
+          <li><strong>Env:</strong> <code>BACKEND_URL=http://backend.internal:8000</code></li>
+          <li><strong>Subnet:</strong> Public (with public IP for demo)</li>
+          <li><strong>Scaling:</strong> min 1 → max 2 tasks</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <h3>ECS Task Role — IAM Least-Privilege Policy</h3>
+  <pre><code>{
+  "Effect": "Allow",
+  "Action": [
+    "bedrock:InvokeModel",
+    "bedrock:InvokeModelWithResponseStream",
+    "athena:StartQueryExecution",
+    "athena:GetQueryResults",
+    "s3:GetObject", "s3:PutObject", "s3:ListBucket",
+    "secretsmanager:GetSecretValue"
+  ],
+  "Resource": "&lt;scoped ARNs — no wildcard Resource in prod&gt;"
+}</code></pre>
+
+  <div class="warning-box">
+    <p style="margin:0; color:#FCD34D; font-weight:600;">Deployment Circuit Breaker</p>
+    <p style="margin:0.5rem 0 0; color:#E2E8F0;">Both ECS services use <code>DeploymentCircuitBreaker: Enable: true, Rollback: true</code>. If the new task fails its health check 3 consecutive times, ECS automatically rolls back to the previous task definition — zero manual intervention needed during a bad deploy.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 12 — IMPLEMENTATION PLAN                            -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="implementation">
+  <h2>Implementation Plan</h2>
+  <div class="section-divider"></div>
+
+  <h3>5-Phase Delivery Roadmap</h3>
+  <div class="phase-row">
+    <div class="phase-card">
+      <span class="phase-tag">Week 1</span>
+      <h4>P1 — Foundation & Data Layer</h4>
+      <ul>
+        <li>Generate Parquet sample data</li>
+        <li>PostgreSQL + pgvector schema</li>
+        <li>Ingest knowledge markdown docs</li>
+        <li>Bedrock Titan embeddings</li>
+        <li>Local DuckDB mock for Athena</li>
+      </ul>
+    </div>
+    <div class="phase-card">
+      <span class="phase-tag">Week 2</span>
+      <h4>P2 — Agent Development</h4>
+      <ul>
+        <li>Build BaseAgent class</li>
+        <li>RAG + SQL Gen agents</li>
+        <li>SQL Review safety validator</li>
+        <li>Execution + self-heal loop</li>
+        <li>Chart + Response agents</li>
+      </ul>
+    </div>
+    <div class="phase-card">
+      <span class="phase-tag">Week 3</span>
+      <h4>P3 — MCP + API Layer</h4>
+      <ul>
+        <li>MCP server implementations</li>
+        <li>MCPRegistry tool dispatcher</li>
+        <li>FastAPI REST endpoints</li>
+        <li>Supervisor orchestration</li>
+        <li>Langfuse trace integration</li>
+      </ul>
+    </div>
+    <div class="phase-card">
+      <span class="phase-tag">Week 4</span>
+      <h4>P4 — Containerisation & IaC</h4>
+      <ul>
+        <li>Dockerfiles for services</li>
+        <li>docker-compose local stack</li>
+        <li>CloudFormation full template</li>
+        <li>Bedrock Guardrails config</li>
+        <li>ECR repos + IAM roles</li>
+      </ul>
+    </div>
+    <div class="phase-card">
+      <span class="phase-tag">Week 5</span>
+      <h4>P5 — CI/CD & Production</h4>
+      <ul>
+        <li>GitHub Actions pipeline</li>
+        <li>cfn-lint + cfn validate job</li>
+        <li>ECR push + ECS deploy</li>
+        <li>CloudWatch alarms</li>
+        <li>Operational runbooks</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 13 — DEPLOYMENT STEPS                               -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="deployment">
+  <h2>Step-by-Step AWS Deployment</h2>
+  <div class="section-divider"></div>
+
+  <ol class="step-list">
+    <li>
+      <div>
+        <strong>Deploy AWS Stack via CloudFormation</strong>
+        <pre><code># From infra/cloudformation/ directory
+aws cloudformation deploy \
+  --template-file template.yaml \
+  --stack-name sql-agent-stack-dev \
+  --parameter-overrides \
+      ProjectName=sql-agent \
+      Environment=dev \
+      AWSRegion=us-east-1 \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --no-fail-on-empty-changeset
+# Creates: VPC, ECS, RDS, Cognito, Athena, S3, Secrets Manager</code></pre>
+      </div>
+    </li>
+    <li>
+      <div>
+        <strong>Authenticate Docker with Amazon ECR</strong>
+        <pre><code>aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin \
+  &lt;ACCOUNT_ID&gt;.dkr.ecr.us-east-1.amazonaws.com</code></pre>
+      </div>
+    </li>
+    <li>
+      <div>
+        <strong>Build & Push Backend Image</strong>
+        <pre><code>docker build -t sql-agent-backend -f backend/Dockerfile.backend .
+docker tag sql-agent-backend:latest &lt;ECR_URI&gt;/sql-agent-backend:latest
+docker push &lt;ECR_URI&gt;/sql-agent-backend:latest</code></pre>
+      </div>
+    </li>
+    <li>
+      <div>
+        <strong>Build & Push Frontend Image</strong>
+        <pre><code>docker build -t sql-agent-frontend -f frontend/Dockerfile.frontend ./frontend
+docker tag sql-agent-frontend:latest &lt;ECR_URI&gt;/sql-agent-frontend:latest
+docker push &lt;ECR_URI&gt;/sql-agent-frontend:latest</code></pre>
+      </div>
+    </li>
+    <li>
+      <div>
+        <strong>Force ECS Rolling Deployment</strong>
+        <pre><code>aws ecs update-service \
+  --cluster sql-agent-cluster-dev \
+  --service sql-agent-backend-service-dev \
+  --force-new-deployment
+# Wait for service to stabilise
+aws ecs wait services-stable \
+  --cluster sql-agent-cluster-dev \
+  --services sql-agent-backend-service-dev sql-agent-frontend-service-dev</code></pre>
+      </div>
+    </li>
+    <li>
+      <div>
+        <strong>Trigger Knowledge Ingestion Pipeline</strong>
+        <pre><code># Via Streamlit Dashboard sidebar OR directly:
+curl -X POST https://&lt;ALB_DNS&gt;/api/v1/ingest \
+  -H "Authorization: Bearer &lt;JWT_TOKEN&gt;"
+# Embeds all knowledge markdown docs into pgvector</code></pre>
+      </div>
+    </li>
+  </ol>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 14 — CI/CD PIPELINE                                 -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="cicd">
+  <h2>CI/CD Pipeline — GitHub Actions</h2>
+  <div class="section-divider"></div>
+
+  <p>Every push to <code>main</code> triggers the 4-job pipeline. No manual deployment steps — the pipeline handles everything from lint to ECS live service update.</p>
+
+  <div class="mermaid">
+graph LR
+    LINT["🔍 Job 1<br/>Lint & Test<br/>Ruff + pytest"]
+    CFN["☁️ Job 2<br/>CFN Validate<br/>aws cfn validate<br/>+ cfn-lint"]
+    DOCKER["📦 Job 3<br/>Docker Build<br/>ECR Push<br/>(main branch only)"]
+    DEPLOY["🚀 Job 4<br/>Deploy to Dev<br/>cfn deploy<br/>ecs update-service"]
+
+    LINT --> CFN
+    CFN --> DOCKER
+    DOCKER --> DEPLOY
+
+    style LINT fill:#1E293B,stroke:#38BDF8,color:#E2E8F0
+    style CFN fill:#1E293B,stroke:#F59E0B,color:#E2E8F0
+    style DOCKER fill:#1a2e1a,stroke:#22C55E,color:#E2E8F0
+    style DEPLOY fill:#0D4429,stroke:#22C55E,color:#E2E8F0
+  </div>
+
+  <pre><code># Key workflow snippet — .github/workflows/ci-cd.yml
+jobs:
+  cloudformation-validate:
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+      - run: aws cloudformation validate-template --template-body file://template.yaml
+      - run: pip install cfn-lint && cfn-lint template.yaml
+
+  docker-build-push:
+    needs: [lint-and-test, cloudformation-validate]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: aws-actions/amazon-ecr-login@v2
+      - run: docker build -t $ECR_REGISTRY/sql-agent-backend:${{ github.sha }} .
+      - run: docker push $ECR_REGISTRY/sql-agent-backend:${{ github.sha }}
+
+  deploy-dev:
+    needs: docker-build-push
+    steps:
+      - run: aws cloudformation deploy --stack-name sql-agent-stack-dev ...
+      - run: aws ecs update-service --force-new-deployment ...
+      - run: aws ecs wait services-stable ...</code></pre>
+
+  <div class="info-box">
+    <p style="margin:0; color:#BAE6FD;"><strong>Required GitHub Secrets:</strong> <code>AWS_ACCESS_KEY_ID</code> · <code>AWS_SECRET_ACCESS_KEY</code> · <code>AWS_ROLE_TO_ASSUME</code></p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 15 — SECURITY & COMPLIANCE                          -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="security">
+  <h2>Security & Compliance</h2>
+  <div class="section-divider"></div>
+
+  <div class="mermaid-row">
+    <div>
+      <h3>Authentication & Identity</h3>
+      <ul>
+        <li>Amazon Cognito User Pool with strong password policy (8+ chars, symbols, upper+lower)</li>
+        <li>JWT Bearer tokens validated on every API call</li>
+        <li>OIDC-based GitHub Actions auth (no static keys in CI/CD)</li>
+        <li>Refresh token rotation policy enforced</li>
+      </ul>
+
+      <h3>Data Protection</h3>
+      <ul>
+        <li>S3 SSE-S3 encryption for all Parquet data at rest</li>
+        <li>Athena query results encrypted at rest</li>
+        <li>RDS encrypted storage via KMS</li>
+        <li>All secrets in AWS Secrets Manager (zero env-var credentials)</li>
+        <li>VPC private subnets isolate RDS and ECS backend from internet</li>
+      </ul>
+    </div>
+    <div>
+      <h3>AI Safety (Bedrock Guardrails)</h3>
+      <ul>
+        <li>Topic policy: only banking analytics queries accepted</li>
+        <li>Content policy: violence, hate, sexual, profanity blocked at HIGH</li>
+        <li>PII redaction: PAN, account, mobile, email auto-masked</li>
+        <li>Response grounding: hallucinated SQL rejected by Review Agent</li>
+        <li>All guardrail denials logged with audit trail</li>
+      </ul>
+
+      <h3>SQL Safety</h3>
+      <ul>
+        <li>SQL Review Agent blocks ALL DDL/DML — only SELECT allowed</li>
+        <li>Parameterised queries via Athena prepared statements</li>
+        <li>Schema allowlist prevents queries on unauthorised tables</li>
+        <li>Injection pattern detector in SQL Review Agent</li>
+      </ul>
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th>Regulation</th><th>Requirement</th><th>Implementation</th></tr></thead>
+    <tbody>
+      <tr><td><strong>RBI Guidelines</strong></td><td>Data localisation, audit trail</td><td>CloudWatch + Langfuse trace per query</td></tr>
+      <tr><td><strong>Basel III</strong></td><td>Risk data aggregation, model risk</td><td>SQL Review Agent + guardrail denials logged</td></tr>
+      <tr><td><strong>ISO 27001</strong></td><td>Information security controls</td><td>VPC isolation + Secrets Manager + KMS</td></tr>
+      <tr><td><strong>SOC 2 Type II</strong></td><td>Availability, confidentiality</td><td>Multi-AZ RDS + ECS circuit breaker + 99.9% SLA</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 16 — OBSERVABILITY                                  -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="observability">
+  <h2>Observability & Monitoring</h2>
+  <div class="section-divider"></div>
+
+  <p>Every agent step, tool call, guardrail decision, and SQL execution is traced. Langfuse provides LLM-specific observability; CloudWatch covers infrastructure and guardrail audit logs.</p>
+
+  <div class="mermaid">
+graph TD
+    AGENT["🧠 Agent Pipeline<br/>(7 agents)"]
+    LF["📡 Langfuse<br/>Agent Traces · Token Usage · Latency per step"]
+    CW["📊 CloudWatch<br/>ECS CPU/Memory · ALB Latency · Guardrail Denials"]
+    ALARM["🚨 Alarms<br/>P95 &gt; 15s · CPU &gt; 80% · Error rate &gt; 1%"]
+    PD["📟 PagerDuty<br/>On-call escalation"]
+
+    AGENT -->|OpenTelemetry| LF
+    AGENT -->|CloudWatch Agent| CW
+    CW --> ALARM --> PD
+
+    style ALARM fill:#3d0000,stroke:#EF4444,color:#FCA5A5
+  </div>
+
+  <table>
+    <thead><tr><th>Metric</th><th>Source</th><th>Alert Threshold</th></tr></thead>
+    <tbody>
+      <tr><td>End-to-end P95 latency</td><td>Langfuse span duration</td><td>&gt; 15 seconds → PagerDuty</td></tr>
+      <tr><td>Guardrail denial rate</td><td>CloudWatch custom metric</td><td>&gt; 20% of queries → review</td></tr>
+      <tr><td>SQL Review failures</td><td>Agent log metric filter</td><td>&gt; 5/min → alert</td></tr>
+      <tr><td>ECS backend CPU</td><td>CloudWatch ECS metrics</td><td>&gt; 80% → scale out</td></tr>
+      <tr><td>Bedrock token usage</td><td>Langfuse + Bedrock logs</td><td>Daily cost &gt; $50 → notify</td></tr>
+      <tr><td>RAG retrieval quality</td><td>RAGAS scores (future)</td><td>Faithfulness &lt; 0.8 → retrain</td></tr>
+    </tbody>
+  </table>
+
+  <div class="harness-box">LANGFUSE AGENT TRACE — "Show top 10 customers by loan default rate Q3 2024"
+
+ SupervisorAgent          ████████████████████████████████████████  8,240ms
+   ├── RAG_Agent          ████████                                  1,480ms
+   ├── SQLGen_Agent       ██████████████                            2,890ms
+   ├── SQLReview_Agent    ████                                        820ms
+   ├── Exec_Agent (Athena)████████                                  1,680ms
+   ├── Chart_Agent        ██                                          420ms
+   └── Response_Agent     █████                                       950ms
+
+ Total tokens:   4,382 (input: 3,840 · output: 542)
+ Bedrock cost:   $0.047
+ Guardrail:      PASS — Topic: banking_analytics ✅</div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 17 — COST MODEL                                     -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="cost">
+  <h2>Cost Model</h2>
+  <div class="section-divider"></div>
+
+  <p>Estimated monthly cost for <strong>development environment</strong> running 8 hours/day, 20 days/month with ~500 queries/month.</p>
+
+  <table>
+    <thead><tr><th>AWS Service</th><th>Config</th><th>Est. Monthly Cost</th></tr></thead>
+    <tbody>
+      <tr><td>Amazon Bedrock (Claude Sonnet 4.5)</td><td>~500 queries × 4,000 tokens avg</td><td>~$24</td></tr>
+      <tr><td>ECS Fargate — Backend (0.5 vCPU · 1GB)</td><td>8 hrs/day × 20 days</td><td>~$9</td></tr>
+      <tr><td>ECS Fargate — Frontend (0.25 vCPU · 512MB)</td><td>8 hrs/day × 20 days</td><td>~$5</td></tr>
+      <tr><td>RDS PostgreSQL (db.t4g.micro)</td><td>730 hours</td><td>~$12</td></tr>
+      <tr><td>Amazon Athena</td><td>~500 queries × 200MB avg scan</td><td>~$5</td></tr>
+      <tr><td>S3 Data Lake</td><td>10GB Parquet + query results</td><td>~$2</td></tr>
+      <tr><td>Amazon Cognito</td><td>&lt;50,000 MAU free tier</td><td>$0</td></tr>
+      <tr><td>CloudWatch + Langfuse</td><td>Log ingestion + retention</td><td>~$8</td></tr>
+      <tr><td><strong>TOTAL (Dev)</strong></td><td></td><td><strong>~$65/month</strong></td></tr>
+      <tr><td><strong>TOTAL (Prod, 24×7 Multi-AZ)</strong></td><td>db.t4g.medium, 2× Fargate tasks</td><td><strong>~$426/month</strong></td></tr>
+    </tbody>
+  </table>
+
+  <div class="highlight-box">
+    <p style="margin:0; font-weight:700; color:#38BDF8;">Cost Optimisation Strategies</p>
+    <ul style="margin:0.5rem 0 0;">
+      <li><strong>Guardrails save Bedrock tokens:</strong> Rejected queries (off-topic/abusive) never reach Claude — estimated 15% token saving.</li>
+      <li><strong>ECS Fargate Spot:</strong> Use Fargate Spot for non-critical tasks — up to 70% cheaper.</li>
+      <li><strong>Athena partition pruning:</strong> Partition S3 data by date — reduces scanned data by 80%.</li>
+      <li><strong>RDS scheduled stop:</strong> Auto-stop RDS in dev environment outside working hours — saves ~60% on RDS cost.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 18 — KEY LEARNINGS                                  -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="learnings">
+  <h2>Key Engineering Learnings</h2>
+  <div class="section-divider"></div>
+
+  <div class="card-grid">
+    <div class="card card-accent-left">
+      <h4>🧠 Multi-Agent &gt; Monolithic Prompt</h4>
+      <p>Splitting concerns into 7 specialised agents improves accuracy and debuggability dramatically. Each agent can be independently tested, swapped, and scaled. SQL errors are now isolated to SQLGen — not buried in a 10,000-token prompt.</p>
+    </div>
+    <div class="card card-accent-left">
+      <h4>📚 RAG is Essential for Enterprise SQL</h4>
+      <p>Without schema context retrieval, Claude hallucinated table names in 40% of test queries. With pgvector RAG providing the top-3 matching schema chunks, SQL accuracy rose to 94%. Context is everything.</p>
+    </div>
+    <div class="card card-accent-left">
+      <h4>🛡️ Guardrails are Non-Negotiable in Banking</h4>
+      <p>A banking AI that can answer "write me a script to scrape RBI data" or respond to abusive inputs is a compliance and reputational liability. Bedrock Guardrails provide a configurable, auditable safety layer that satisfies legal and risk teams before any LLM call is made.</p>
+    </div>
+    <div class="card card-accent-left">
+      <h4>🔌 MCP Decouples Agents from Infrastructure</h4>
+      <p>The MCPRegistry pattern means agents never call AWS APIs directly. When Athena workgroup ARNs changed in staging, only the MCP server config changed — zero agent code modifications. This is the cloud-native equivalent of dependency injection.</p>
+    </div>
+    <div class="card card-accent-left">
+      <h4>☁️ CloudFormation IaC from Day One</h4>
+      <p>Provisioning the dev environment manually would have taken 4 hours the first time and caused endless "it works on my account" bugs. With CloudFormation, spinning up a new environment takes 8 minutes and is guaranteed to be identical every time.</p>
+    </div>
+    <div class="card card-accent-left">
+      <h4>📡 Observability at the LLM Step Level</h4>
+      <p>Generic application monitoring (CPU, memory) is insufficient for LLM systems. Langfuse per-step traces revealed that SQLGen was consuming 35% of total latency — driving the decision to cache embedding results and reduce RAG round trips.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 19 — FUTURE ROADMAP                                 -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="roadmap">
+  <h2>Future Roadmap</h2>
+  <div class="section-divider"></div>
+
+  <p>The current platform is production-ready. The following roadmap outlines enterprise enhancements planned for the next 3 quarters — covering evaluation quality, intelligence improvements, and enterprise-scale features.</p>
+
+  <div class="roadmap-grid">
+    <div class="roadmap-col phase-q1">
+      <h3>📊 Q1 — Evaluation Framework</h3>
+
+      <div class="roadmap-item">
+        <span class="status-badge s-priority">HIGH PRIORITY</span>
+        <h4>LLM Evaluation with RAGAS</h4>
+        <p>Measure SQL accuracy, answer faithfulness, context precision and hallucination scores on every query using the RAGAS metrics framework. Target: faithfulness &gt; 0.9, context precision &gt; 0.85.</p>
+      </div>
+
+      <div class="roadmap-item">
+        <span class="status-badge s-planned">PLANNED</span>
+        <h4>Human-in-the-Loop Review Portal</h4>
+        <p>Domain experts rate AI answers (👍/👎). Flagged cases auto-routed for agent prompt tuning. Feedback stored in PostgreSQL for fine-tuning dataset curation.</p>
+      </div>
+
+      <div class="roadmap-item">
+        <span class="status-badge s-planned">PLANNED</span>
+        <h4>SQL Regression Test Suite</h4>
+        <p>Golden dataset of 500+ benchmark NL→SQL pairs run on every CI build. SQL accuracy score gate: must stay above 90% to pass the GitHub Actions pipeline.</p>
+      </div>
+    </div>
+
+    <div class="roadmap-col phase-q2">
+      <h3>🧠 Q2 — Intelligence Upgrades</h3>
+
+      <div class="roadmap-item">
+        <span class="status-badge s-research">RESEARCH</span>
+        <h4>Fine-Tuning on Bank SQL Corpus</h4>
+        <p>Fine-tune Claude on 10,000+ bank-specific NL→SQL pairs using Amazon Bedrock Model Customisation. Expected +15% SQL accuracy improvement on domain-specific queries.</p>
+      </div>
+
+      <div class="roadmap-item">
+        <span class="status-badge s-planned">PLANNED</span>
+        <h4>Knowledge Graph Integration</h4>
+        <p>Replace flat vector search with a schema knowledge graph (Amazon Neptune) capturing table relationships, foreign keys and business rule lineage for richer SQL context.</p>
+      </div>
+
+      <div class="roadmap-item">
+        <span class="status-badge s-planned">PLANNED</span>
+        <h4>Multi-modal Support</h4>
+        <p>Upload PDF reports and scanned financial statements — agent extracts tables, stores as Parquet in S3, and makes them immediately queryable via Athena.</p>
+      </div>
+    </div>
+
+    <div class="roadmap-col phase-q3">
+      <h3>🏢 Q3 — Enterprise Scale</h3>
+
+      <div class="roadmap-item">
+        <span class="status-badge s-planned">PLANNED</span>
+        <h4>Model A/B Testing Framework</h4>
+        <p>Route 10% of traffic to GPT-4o vs Claude Sonnet. Compare cost, latency and SQL accuracy using Langfuse experiments. Auto-select best model per query type.</p>
+      </div>
+
+      <div class="roadmap-item">
+        <span class="status-badge s-planned">PLANNED</span>
+        <h4>SSO + Active Directory Integration</h4>
+        <p>Replace Cognito username/password with SAML 2.0 federated login via corporate Active Directory. Role-based data access enforcement by department and seniority.</p>
+      </div>
+
+      <div class="roadmap-item">
+        <span class="status-badge s-planned">PLANNED</span>
+        <h4>Real-time Streaming Dashboards</h4>
+        <p>Add WebSocket streaming to progressively render SQL results and chart updates. Amazon Kinesis integration for live transaction feed queries with sub-second latency.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- SLIDE 20 — CLOSING                                        -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<section id="closing" style="text-align:center; align-items:center;">
+  <div style="font-size:3.5rem; margin-bottom:1rem;">🏦</div>
+  <h2 style="border:none; display:block; text-align:center;">From Classroom to Production on AWS ECS</h2>
+  <div class="section-divider" style="margin:1rem auto 2rem;"></div>
+
+  <p style="max-width:700px; font-size:1.15rem; line-height:1.8; margin:0 auto 2rem;">
+    This capstone demonstrates a complete enterprise GenAI product lifecycle — from business requirements and multi-agent design to <strong>Bedrock Guardrails</strong>, CloudFormation IaC, ECR/ECS deployment, and a GitHub Actions CI/CD pipeline — the same stack used by production banking systems today.
+  </p>
+
+  <div class="kpi-row" style="justify-content:center; max-width:800px; margin:0 auto 2.5rem;">
+    <div class="kpi-box"><div class="kpi-num">7</div><div class="kpi-label">AI Agents</div></div>
+    <div class="kpi-box"><div class="kpi-num">3</div><div class="kpi-label">MCP Servers</div></div>
+    <div class="kpi-box"><div class="kpi-num">6</div><div class="kpi-label">AWS Services</div></div>
+    <div class="kpi-box"><div class="kpi-num">4</div><div class="kpi-label">CI/CD Jobs</div></div>
+    <div class="kpi-box"><div class="kpi-num">21</div><div class="kpi-label">Slides</div></div>
+  </div>
+
+  <div style="display:flex; gap:0.75rem; flex-wrap:wrap; justify-content:center;">
+    <span class="tag">Strands Agents</span>
+    <span class="tag">Bedrock Guardrails</span>
+    <span class="tag">MCP Protocol</span>
+    <span class="tag">pgvector RAG</span>
+    <span class="tag">ECS Fargate</span>
+    <span class="tag">CloudFormation</span>
+    <span class="tag">GitHub Actions</span>
+    <span class="tag">Langfuse</span>
+    <span class="tag">RAGAS (Roadmap)</span>
+  </div>
+
+  <div class="highlight-box" style="max-width:700px; margin:2.5rem auto 0; text-align:left;">
+    <p style="margin:0; font-weight:700; color:#38BDF8; font-size:1.1rem;">🎓 Thank You</p>
+    <p style="margin:0.5rem 0 0; color:#CBD5E1;">Questions? Visit the repository at <a href="https://github.com/manish6007/strands-multiagent-sql-agents" target="_blank" style="color:#38BDF8; text-decoration:underline;">github.com/manish6007/strands-multiagent-sql-agents</a>.</p>
+  </div>
+</section>
+
+</body>
+</html>
