@@ -54,4 +54,4 @@ If the database engine rejects a query (due to Presto dialect discrepancies, mis
 
 ### Issue: "boto3 ClientError: AccessDeniedException when calling Bedrock"
 - **Cause**: The container does not have permission to access Bedrock models or your AWS credentials file is missing.
-- **Resolution**: Ensure your AWS credentials at `C:/Users/manis/.aws/` are valid and the models (Sonnet / Titan) are enabled in your target region (e.g. `us-east-1`). You can toggle `MOCK_LLM=true` in `.env` or in docker compose to test everything fully offline.
+- **Resolution**: Ensure your AWS credentials at `~/.aws/` are valid and the models (Sonnet / Titan) are enabled in your target region (e.g. `us-east-1`). You can toggle `MOCK_LLM=true` in `.env` or in docker compose to test everything fully offline.

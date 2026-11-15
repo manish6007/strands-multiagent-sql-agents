@@ -57,7 +57,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/postgres
       - LOCAL_DEV=true
-      - MOCK_LLM=false
+      - MOCK_LLM=${MOCK_LLM:-false}
       - BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20241022-v2:0
       - ATHENA_DATABASE=analytics_db
       - ATHENA_S3_OUTPUT=s3://my-athena-query-results-bucket/uncategorized/
@@ -68,7 +68,7 @@ services:
       - LANGFUSE_HOST=http://langfuse:3000
     volumes:
       # Mount local user AWS credentials directory to give container direct Bedrock permission
-      - C:/Users/manis/.aws:/root/.aws:ro
+      - ~/.aws:/root/.aws:ro
       # Mount sample data so DuckDB mock can access local Parquet datasets
       - ./data:/app/data
       # Mount backend folder for live-reload / code syncing

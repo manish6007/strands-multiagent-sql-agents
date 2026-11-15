@@ -1,4 +1,4 @@
-# Enterprise Text-to-SQL Analytics Agent Platform (Week 5 Capstone)
+# Enterprise Text-to-SQL Analytics Agent Platform
 
 This repository contains a production-ready, enterprise-grade Text-to-SQL Analytics Agent Platform. Business users can ask complex questions in plain English and receive SQL-generated answers, interactive Plotly visualizations, business summaries, and detailed multi-agent telemetry traces.
 
@@ -19,7 +19,7 @@ The application is structured into a containerized multi-agent system built on *
 ## Directory Structure
 
 ```
-Week 5/
+strands-multiagent-sql-agents/
 ├── backend/
 │   ├── app/
 │   │   ├── api/             # FastAPI routers and endpoints
@@ -52,7 +52,8 @@ Week 5/
 
 ### Prerequisites
 - Docker & Docker Compose installed.
-- Real Amazon Bedrock permissions (AWS credentials file configured at `C:/Users/manis/.aws/credentials`).
+- Amazon Bedrock access, with AWS credentials in `~/.aws/credentials` (on Windows: `%USERPROFILE%\.aws\credentials`).
+- **No AWS account?** Run the whole stack offline with mocked LLM responses: `MOCK_LLM=true docker compose up --build`.
 
 ### Step 1: Generate Sample Data & Knowledge Files
 Execute the Python script in the workspace root to generate local parquet files and glossary documents:
